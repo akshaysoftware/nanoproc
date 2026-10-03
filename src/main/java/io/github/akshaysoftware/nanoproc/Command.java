@@ -1,5 +1,6 @@
 package io.github.akshaysoftware.nanoproc;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
@@ -130,5 +131,19 @@ public final class Command {
         timeout,
         stdoutLimit,
         stderrLimit);
+  }
+
+  /**
+   * Executes this command using concurrent I/O and bounded cleanup.
+   *
+   * <p>The timeout begins after ProcessBuilder.start() returns. Cleanup may add bounded waits.
+   * Non-zero exit codes are returned rather than thrown.
+   *
+   * @return the outcome and captured byte prefixes
+   * @throws IOException if process startup or process I/O fails, including rejected stdin
+   * @throws InterruptedException if interrupted; cleanup runs and the interrupt flag is restored
+   */
+  public ProcessResult run() throws IOException, InterruptedException {
+    return ProcessRunner.run(this);
   }
 }
