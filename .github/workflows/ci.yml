@@ -1,0 +1,44 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    name: Verify (${{ matrix.os }}, Java ${{ matrix.java }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        java: ['21', '23', '24', '25', '26']
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+      - name: Verify
+        shell: bash
+        run: ./mvnw --batch-mode --no-transfer-progress verify
+  gate:
+    name: CI gate
+    if: ${{ always() }}
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require all matrix jobs to pass
+        env:
+          RESULT: ${{ needs.verify.result }}
+        run: test "$RESULT" = success
