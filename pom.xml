@@ -6,7 +6,7 @@
     <groupId>io.github.akshaysoftware</groupId>
     <artifactId>nanoproc</artifactId>
     <version>0.1.0-SNAPSHOT</version>
-    <name>Nanoproc</name>
+    <name>nanoproc</name>
     <description>Tiny, safe child processes and persistent workers for Java.</description>
     <url>https://github.com/akshaysoftware/nanoproc</url>
     <licenses>
