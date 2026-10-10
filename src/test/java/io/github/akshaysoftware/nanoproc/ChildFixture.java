@@ -9,7 +9,7 @@ import java.util.Arrays;
 public final class ChildFixture {
   public static void main(String[] args) throws Exception {
     switch (args[0]) {
-      case "ready" -> {
+      case "ready", "no-read" -> {
         Files.writeString(Path.of(args[1]), Long.toString(ProcessHandle.current().pid()));
         Thread.sleep(60_000);
       }
@@ -23,10 +23,6 @@ public final class ChildFixture {
         }
         Files.writeString(Path.of(args[1]), Long.toString(ProcessHandle.current().pid()));
         descendant.waitFor();
-      }
-      case "no-read" -> {
-        Files.writeString(Path.of(args[1]), Long.toString(ProcessHandle.current().pid()));
-        Thread.sleep(60_000);
       }
       case "echo" -> System.in.transferTo(System.out);
       case "args" -> System.out.print(args[1]);
@@ -57,11 +53,60 @@ public final class ChildFixture {
         }
       }
       case "exact" -> System.out.write(new byte[Integer.parseInt(args[1])]);
+      case "framed-echo" -> {
+        int maxBytes = args.length > 1 ? Integer.parseInt(args[1]) : 1024 * 1024;
+        try {
+          while (true) {
+            byte[] frame = FrameIO.readFrame(System.in, maxBytes);
+            FrameIO.writeFrame(System.out, frame, maxBytes);
+          }
+        } catch (Exception ignored) {
+        }
+      }
+      case "framed-stderr-echo" -> {
+        int maxBytes = args.length > 1 ? Integer.parseInt(args[1]) : 1024 * 1024;
+        System.err.write("diagnostic error log".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        System.err.flush();
+        try {
+          while (true) {
+            byte[] frame = FrameIO.readFrame(System.in, maxBytes);
+            FrameIO.writeFrame(System.out, frame, maxBytes);
+          }
+        } catch (Exception ignored) {
+        }
+      }
+      case "framed-malformed" -> {
+        int maxBytes = args.length > 1 ? Integer.parseInt(args[1]) : 1024 * 1024;
+        try {
+          FrameIO.readFrame(System.in, maxBytes);
+          System.out.write(new byte[] {0, 0, 0, (byte) 255});
+          System.out.flush();
+        } catch (Exception ignored) {
+        }
+      }
+      case "framed-hang-read" -> {
+        int maxBytes = args.length > 1 ? Integer.parseInt(args[1]) : 1024 * 1024;
+        try {
+          FrameIO.readFrame(System.in, maxBytes);
+          Thread.sleep(60_000);
+        } catch (Exception ignored) {
+        }
+      }
+      case "framed-slow" -> {
+        int sleepMillis = Integer.parseInt(args[1]);
+        int maxBytes = args.length > 2 ? Integer.parseInt(args[2]) : 1024 * 1024;
+        try {
+          byte[] frame = FrameIO.readFrame(System.in, maxBytes);
+          Thread.sleep(sleepMillis);
+          FrameIO.writeFrame(System.out, frame, maxBytes);
+        } catch (Exception ignored) {
+        }
+      }
       default -> throw new IllegalArgumentException(args[0]);
     }
   }
 
-  private static java.util.List<String> javaCommand(String... args) {
+  static java.util.List<String> javaCommand(String... args) {
     String executable = System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java";
     var command = new ArrayList<String>();
     command.add(Path.of(System.getProperty("java.home"), "bin", executable).toString());

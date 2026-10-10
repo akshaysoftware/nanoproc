@@ -17,4 +17,19 @@ public final class Nanoproc {
   public static Command command(String... argv) {
     return new Command(List.of(argv));
   }
+
+  /**
+   * Creates an immutable worker builder for persistent child process exchanges.
+   *
+   * @param argv executable followed by its arguments; no shell is added
+   * @return a worker builder
+   * @throws IllegalArgumentException if argv is empty
+   * @throws NullPointerException if argv or an element is null
+   */
+  public static Worker.Builder worker(String... argv) {
+    if (argv.length == 0) {
+      throw new IllegalArgumentException("argv cannot be empty");
+    }
+    return new Worker.Builder(List.of(argv));
+  }
 }
