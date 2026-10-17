@@ -7,7 +7,7 @@
     <artifactId>nanoproc</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <name>nanoproc</name>
-    <description>Tiny, safe child processes and persistent workers for Java.</description>
+    <description>Bounded child processes and persistent byte workers for Java.</description>
     <url>https://github.com/akshaysoftware/nanoproc</url>
     <licenses>
         <license>
@@ -58,6 +58,19 @@
         </dependency>
     </dependencies>
     <build>
+        <!-- Keep the wrapper, artifact coordinates, and release metadata at the repository root. -->
+        <sourceDirectory>${project.basedir}/java/src/main/java</sourceDirectory>
+        <testSourceDirectory>${project.basedir}/java/src/test/java</testSourceDirectory>
+        <resources>
+            <resource>
+                <directory>${project.basedir}/java/src/main/resources</directory>
+            </resource>
+        </resources>
+        <testResources>
+            <testResource>
+                <directory>${project.basedir}/java/src/test/resources</directory>
+            </testResource>
+        </testResources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -91,10 +104,15 @@
                 <groupId>com.spotify.fmt</groupId>
                 <artifactId>fmt-maven-plugin</artifactId>
                 <version>${fmt-maven-plugin.version}</version>
+                <configuration>
+                    <additionalSourceDirectories>
+                        <param>${project.basedir}/examples/java</param>
+                    </additionalSourceDirectories>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>
-                            <goal>format</goal>
+                            <goal>check</goal>
                         </goals>
                     </execution>
                 </executions>

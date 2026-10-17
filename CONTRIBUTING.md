@@ -7,18 +7,30 @@ Thanks for helping improve Nanoproc. Keep changes small and easy to review.
 1. Open an issue before a substantial API change; small fixes can go straight to a PR.
 2. Fork the repository and create a branch.
 3. Add regression tests for new behaviour and fixes.
-4. Run `./mvnw fmt:format` and `./mvnw verify`.
+4. Follow [DEVELOPMENT.md](DEVELOPMENT.md), run `./mvnw fmt:format`, then `./mvnw verify`.
 5. Explain the problem, resulting behaviour, and validation in your PR.
 
 Linux, macOS, and Windows all matter. Lifecycle tests should use explicit readiness
 signals and generous deadlines rather than assuming fast subprocess startup.
 
 Use JDK 25 for development. CI also checks Java 21. The wrapper pins Maven.
+Run Maven from the repository root; Java sources and tests are in `java/src/`.
+The build checks formatting without modifying source files. CI also runs the
+[Java example](examples/java/README.md) against the packaged artifact.
+
+## Repository layout
+
+The [root README](README.md) lists implementations and their status. Python,
+TypeScript, and Rust directories are planned SDKs, not working packages.
+Protocol changes belong in [spec/](spec/README.md), shared compatibility fixtures
+in [conformance/](conformance/README.md), and runnable programs in
+[examples/](examples/README.md). Keep package versions separate from protocol
+compatibility, and document changes to either contract.
 
 ## Principles
 
 - Keep the public API small and documented.
-- Use JDK classes; preserve zero runtime dependencies.
+- Use JDK classes in the Java implementation; preserve its zero runtime dependencies.
 - Never add an implicit shell.
 - Keep all captured data bounded.
 - Preserve interruption and honest cleanup guarantees.

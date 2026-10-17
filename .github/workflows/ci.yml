@@ -31,6 +31,9 @@ jobs:
       - name: Verify
         shell: bash
         run: ./mvnw --batch-mode --no-transfer-progress verify
+      - name: Run the Java example
+        shell: bash
+        run: java --class-path 'target/*' examples/java/RunProcess.java
   gate:
     name: CI gate
     if: ${{ always() }}

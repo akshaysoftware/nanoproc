@@ -1,81 +1,86 @@
 # Nanoproc
 
-Nanoproc: tiny, safe child processes and persistent workers for Java.
+**Local workers. Multiple languages. Explicit process boundaries.**
 
-**Status:** pre-release. Java 21+; zero runtime dependencies.
+Nanoproc provides small APIs for running child processes and exchanging messages
+with persistent local workers. Keep your application in its existing language and
+reuse another language's libraries through a separate process.
 
-Nanoproc provides a small layer above `ProcessBuilder`: concurrent process I/O,
-execution deadlines, bounded captured output, and best-effort cleanup.
-Persistent framed workers are planned for v0.1.0.
+The current implementation is a **pre-release Java library** for Java 21+, with
+zero runtime dependencies. Python, TypeScript, and Rust SDKs are planned; their
+directories are scaffolding, not installable packages. The raw-byte worker
+protocol is a draft, and worker lifecycle hardening is in progress.
 
-Here, **safe** means bounded process management. Nanoproc is **not a sandbox**:
-children retain filesystem, network, environment, and OS permissions.
-It does not impose CPU or child-memory quotas or make untrusted code safe.
+## Use cases
 
-## Usage
+- Run a command with concurrent I/O, an execution deadline, and bounded output.
+- Reuse a persistent process across multiple binary request/response exchanges.
+- Integrate an existing scientific, ML, or native computation program locally.
 
-```java
-import io.github.akshaysoftware.nanoproc.Nanoproc;
-import io.github.akshaysoftware.nanoproc.ProcessResult;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
+Nanoproc is designed for application-owned workers. It does not require a
+listening port, broker, or separately deployed service. Applications supply the
+worker executable, its runtime, and its dependencies.
 
-ProcessResult result = Nanoproc.command("python", "analyse.py")
-    .stdin("input".getBytes(StandardCharsets.UTF_8))
-    .timeout(Duration.ofSeconds(10))
-    .maxStdoutBytes(1024 * 1024)
-    .maxStderrBytes(64 * 1024)
-    .run();
+## Get started with Java
 
-if (result.successful()) {
-  System.out.print(result.stdoutUtf8());
-} else {
-  System.err.println(result.outcome());
-  System.err.print(result.stderrUtf8());
-}
-```
+Use JDK 25 for development; the library targets Java 21.
 
-`run()` throws `IOException` for startup/I/O failure and `InterruptedException`
-for interruption. Non-zero exits, deadlines, and output overflow are result
-outcomes. Captured data is a byte prefix; `stdout()` and `stderr()` return copies.
-
-Deadlines begin after process creation and include I/O completion. Cleanup adds
-bounded waits. Descendant cleanup is best effort. Read [the contract](docs/design.md)
-for details, including pipe inheritance and partial output.
-
-The artifact has not been published to Maven Central. For local experiments:
-
-```bash
-./mvnw install
-```
-
-Then add this dependency to another local Maven project:
-
-```xml
-<dependency>
-  <groupId>io.github.akshaysoftware</groupId>
-  <artifactId>nanoproc</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
-</dependency>
-```
-
-## Development
-
-Use JDK 25 by default; the library compiles for Java 21.
-
-```bash
-./mvnw fmt:format
+```sh
 ./mvnw verify
+java --class-path 'target/*' examples/java/RunProcess.java
 ```
 
-On Windows PowerShell, use `.\mvnw.cmd` in place of `./mvnw`.
+The example sends stdin to a Java child process and checks the returned bytes.
+It needs no Python or Node installation. In Windows PowerShell, use
+`.\mvnw.cmd verify` for the build; the `java` command is the same.
 
-## Contributing
+See the [Java guide](java/README.md) for API usage and local installation, and
+[examples](examples/README.md) for complete runnable programs. The artifact has
+not been published to Maven Central.
 
-Bug reports, documentation improvements, and small focused PRs are welcome.
-See [CONTRIBUTING.md](CONTRIBUTING.md), [the roadmap](docs/roadmap.md),
-and [the design contract](docs/design.md).
+## One protocol, independent implementations
+
+A host SDK owns process launch, calls, diagnostics, and shutdown. A worker SDK
+adapts application code to the same byte protocol. A compatible worker can be
+reused by hosts in different languages without depending on their SDKs.
+
+The [draft specification](spec/README.md) defines framing separately from payload
+encoding. The initial transport uses stdin/stdout with a four-byte big-endian
+length header; stderr carries diagnostics. There is no handshake, shared object
+model, or automatic cross-language type conversion.
+
+| Directory | Purpose | Status |
+| --- | --- | --- |
+| [java/](java/README.md) | Java host library and tests | Implemented; pre-release |
+| [python/](python/README.md) | Python worker SDK | Planned |
+| [typescript/](typescript/README.md) | Node/TypeScript host SDK | Planned |
+| [rust/](rust/README.md) | Rust worker SDK | Planned |
+| [spec/](spec/README.md) | Protocol and compatibility contract | Draft |
+| [conformance/](conformance/README.md) | Shared compatibility fixtures and harness | Planned |
+| [examples/](examples/README.md) | Runnable integration examples | Java example available |
+| [docs/](docs/README.md) | Architecture and roadmap | Available |
+
+The root `pom.xml` and Maven wrapper build the Java sources in `java/src/`.
+SDK releases will identify their supported protocol/profile separately from
+their package version. Cross-language compatibility is not yet certified.
+
+## Process boundaries
+
+Nanoproc is **not an operating-system sandbox**. Child processes inherit the
+permissions of their execution environment. It does not impose CPU, child-memory,
+or GPU quotas, and a timed-out operation may already have performed side effects.
+
+Read the [design and current limitations](docs/design.md) before using the
+experimental worker API. Descendant cleanup is best effort for one-shot commands;
+the worker cleanup implementation still needs hardening.
+
+## Contribute
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for setup and commands,
+[CONTRIBUTING.md](CONTRIBUTING.md) for contribution expectations, and the
+[roadmap](docs/roadmap.md) for the next milestones. Security reports should follow
+[SECURITY.md](SECURITY.md).
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+[Apache-2.0](LICENSE).

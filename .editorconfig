@@ -8,5 +8,11 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 2
 
+[pom.xml]
+indent_size = 4
+
+[*.py]
+indent_size = 4
+
 [mvnw.cmd]
 end_of_line = crlf
