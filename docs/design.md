@@ -63,6 +63,19 @@ range; worker timeout validation still needs to enforce that bound. Process exit
 also needs coordination with buffered responses and final diagnostic drainage.
 The repository layout and protocol draft do not resolve these runtime issues.
 
+## Python worker implementation
+
+`nanoproc.serve` adapts a synchronous `bytes -> bytes` handler to blocking binary
+stdin/stdout. It validates incoming lengths before reading payloads, reads each
+frame fully, invokes the handler once, validates its response, and writes and
+flushes one response frame. There is no task queue or background execution.
+
+EOF between requests returns normally. Truncated or invalid frames, handler
+exceptions, invalid responses, and stream failures propagate to the entry point;
+the process should exit instead of trying to recover stream alignment. Stdout
+is reserved for framing; applications must direct diagnostics to stderr.
+The host remains responsible for deadlines, diagnostic retention, and cleanup.
+
 ## Compatibility and scope
 
 The raw payload is opaque. JSON, typed errors, negotiation, callbacks, and

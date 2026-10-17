@@ -17,7 +17,8 @@ delivery dates. Stable releases will document supported runtimes and profiles.
 
 - Review and stabilize the raw-byte protocol draft.
 - Implement shared framing fixtures and black-box lifecycle tests in `conformance/`.
-- Add a minimal Python worker SDK and a real Java-to-Python example.
+- Expand the minimal Python worker helper and Java-to-Python example as needed;
+  both are implemented and exercised in CI, but not yet published.
 - Add a Node/TypeScript host and run the same Python worker unchanged.
 - Publish explicit SDK-to-protocol compatibility information.
 

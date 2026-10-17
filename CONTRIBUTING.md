@@ -7,7 +7,9 @@ Thanks for helping improve Nanoproc. Keep changes small and easy to review.
 1. Open an issue before a substantial API change; small fixes can go straight to a PR.
 2. Fork the repository and create a branch.
 3. Add regression tests for new behaviour and fixes.
-4. Follow [DEVELOPMENT.md](DEVELOPMENT.md), run `./mvnw fmt:format`, then `./mvnw verify`.
+4. Follow [DEVELOPMENT.md](DEVELOPMENT.md) and run the checks for each SDK changed.
+   For Java, run `./mvnw fmt:format`, then `./mvnw verify`. For Python, install
+   `./python` in a virtual environment and run its unittest suite.
 5. Explain the problem, resulting behaviour, and validation in your PR.
 
 Linux, macOS, and Windows all matter. Lifecycle tests should use explicit readiness
@@ -20,8 +22,8 @@ The build checks formatting without modifying source files. CI also runs the
 
 ## Repository layout
 
-The [root README](README.md) lists implementations and their status. Python,
-TypeScript, and Rust directories are planned SDKs, not working packages.
+The [root README](README.md) lists implementations and their status. Java and
+Python are implemented; TypeScript and Rust directories remain planned SDKs.
 Protocol changes belong in [spec/](spec/README.md), shared compatibility fixtures
 in [conformance/](conformance/README.md), and runnable programs in
 [examples/](examples/README.md). Keep package versions separate from protocol

@@ -34,14 +34,47 @@ jobs:
       - name: Run the Java example
         shell: bash
         run: java --class-path 'target/*' examples/java/RunProcess.java
+      - name: Set up Python for the cross-language example
+        if: matrix.java == '25'
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.14'
+      - name: Install the Python worker package
+        if: matrix.java == '25'
+        run: python -m pip install --no-deps ./python
+      - name: Run the Java-to-Python example
+        if: matrix.java == '25'
+        shell: bash
+        run: java --class-path 'target/*' examples/java/CallPythonWorker.java python
+  python:
+    name: Python (${{ matrix.os }}, ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.11', '3.14']
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install the Python worker package
+        run: python -m pip install --no-deps ./python
+      - name: Test the installed package
+        run: python -W error -m unittest discover -s python/tests -v
   gate:
     name: CI gate
     if: ${{ always() }}
-    needs: verify
+    needs: [verify, python]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
       - name: Require all matrix jobs to pass
         env:
-          RESULT: ${{ needs.verify.result }}
-        run: test "$RESULT" = success
+          JAVA_RESULT: ${{ needs.verify.result }}
+          PYTHON_RESULT: ${{ needs.python.result }}
+        run: test "$JAVA_RESULT" = success && test "$PYTHON_RESULT" = success

@@ -60,7 +60,33 @@ Use explicit readiness signals for process lifecycle tests and generous outer
 timeouts. Ensure fixture processes are cleaned up even when an assertion fails.
 
 CI verifies Linux, macOS, and Windows on Java 21 and 25, then runs the Java
-example against the packaged JAR. All matrix jobs must pass the `CI gate`.
+example against the packaged JAR. On Java 25 it also installs the Python worker
+package and runs the Java-to-Python example on each OS. All Java and Python
+matrix jobs must pass the `CI gate`.
+
+## Python worker development
+
+Use Python 3.11+ with a virtual environment. From the repository root:
+
+```sh
+python -m venv .venv
+.venv/bin/python -m pip install -e ./python
+.venv/bin/python -W error -m unittest discover -s python/tests -v
+```
+
+On Windows PowerShell replace `.venv/bin/python` with
+`.venv\Scripts\python.exe`. Python-only tests do not require Java. To run the
+cross-language example after Maven packaging:
+
+```sh
+java --class-path 'target/*' examples/java/CallPythonWorker.java .venv/bin/python
+```
+
+CI installs a regular, non-editable build of `./python` and tests that installed
+package on Python 3.11 and 3.14 across Linux, macOS, and Windows. Framing tests use
+independent wire bytes; subprocess tests check binary stdio, flushing before EOF,
+clean shutdown on EOF, and nonzero exits on errors. They do not certify the Java
+host's outstanding lifecycle guarantees.
 
 ## Work on the ecosystem
 
