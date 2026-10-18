@@ -6,10 +6,11 @@ Nanoproc provides small APIs for running child processes and exchanging messages
 with persistent local workers. Keep your application in its existing language and
 reuse another language's libraries through a separate process.
 
-The current implementation is a **pre-release Java library** for Java 21+, with
-zero runtime dependencies. Python, TypeScript, and Rust SDKs are planned; their
-directories are scaffolding, not installable packages. The raw-byte worker
-protocol is a draft, and worker lifecycle hardening is in progress.
+The current implementations are a **pre-release Java host library** for Java 21+
+and a **Python worker helper** for Python 3.11+, both with zero runtime
+dependencies. TypeScript and Rust SDKs are planned; their directories are
+scaffolding, not installable packages. The raw-byte worker protocol is a draft,
+and Java worker lifecycle hardening is in progress.
 
 ## Use cases
 
@@ -38,6 +39,16 @@ See the [Java guide](java/README.md) for API usage and local installation, and
 [examples](examples/README.md) for complete runnable programs. The artifact has
 not been published to Maven Central.
 
+## Add a Python worker
+
+Install the [Python worker package](python/README.md) from this repository and
+adapt a synchronous function with `serve(handler)`. Each request and response is
+an opaque `bytes` payload. The handler's state persists between calls, while
+the Java host controls process launch and call deadlines.
+
+See the [Java-to-Python example](examples/python/README.md) for environment setup
+and a complete binary round trip. The Python package is not published to PyPI.
+
 ## One protocol, independent implementations
 
 A host SDK owns process launch, calls, diagnostics, and shutdown. A worker SDK
@@ -52,12 +63,12 @@ model, or automatic cross-language type conversion.
 | Directory | Purpose | Status |
 | --- | --- | --- |
 | [java/](java/README.md) | Java host library and tests | Implemented; pre-release |
-| [python/](python/README.md) | Python worker SDK | Planned |
+| [python/](python/README.md) | Python worker helper | Implemented; pre-release |
 | [typescript/](typescript/README.md) | Node/TypeScript host SDK | Planned |
 | [rust/](rust/README.md) | Rust worker SDK | Planned |
 | [spec/](spec/README.md) | Protocol and compatibility contract | Draft |
 | [conformance/](conformance/README.md) | Shared compatibility fixtures and harness | Planned |
-| [examples/](examples/README.md) | Runnable integration examples | Java example available |
+| [examples/](examples/README.md) | Runnable integration examples | Java and Java-to-Python available |
 | [docs/](docs/README.md) | Architecture and roadmap | Available |
 
 The root `pom.xml` and Maven wrapper build the Java sources in `java/src/`.

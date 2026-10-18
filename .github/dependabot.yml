@@ -15,3 +15,11 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "deps(gh-actions)"
+
+  - package-ecosystem: uv
+    directory: /python
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(python)"
