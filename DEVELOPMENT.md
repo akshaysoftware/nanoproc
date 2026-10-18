@@ -66,27 +66,35 @@ matrix jobs must pass the `CI gate`.
 
 ## Python worker development
 
-Use Python 3.11+ with a virtual environment. From the repository root:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) 0.12.23 or
+newer. The worker requires Python 3.11+; uv can install a compatible interpreter.
+From the repository root:
 
 ```sh
-python -m venv .venv
-.venv/bin/python -m pip install -e ./python
-.venv/bin/python -W error -m unittest discover -s python/tests -v
+uv sync --project python --locked
+uv run --directory python --locked pytest
+uv build --directory python
 ```
 
-On Windows PowerShell replace `.venv/bin/python` with
-`.venv\Scripts\python.exe`. Python-only tests do not require Java. To run the
-cross-language example after Maven packaging:
+These commands also work in Windows PowerShell. uv creates `python/.venv` and
+installs the development dependencies recorded in `python/uv.lock`. It activates
+that environment for commands run with `uv run`; manual activation is optional.
+Python-only tests do not require Java. To run the cross-language example after
+Maven packaging:
 
 ```sh
-java --class-path 'target/*' examples/java/CallPythonWorker.java .venv/bin/python
+uv run --project python --locked java --class-path 'target/*' examples/java/CallPythonWorker.java python
 ```
 
-CI installs a regular, non-editable build of `./python` and tests that installed
-package on Python 3.11 and 3.14 across Linux, macOS, and Windows. Framing tests use
-independent wire bytes; subprocess tests check binary stdio, flushing before EOF,
-clean shutdown on EOF, and nonzero exits on errors. They do not certify the Java
-host's outstanding lifecycle guarantees.
+CI uses `uv sync --locked --no-editable` and pytest to test the installed package
+on Python 3.11 and 3.14 across Linux, macOS, and Windows. Framing tests use
+independent wire bytes; subprocess tests check binary stdio, flushing before
+EOF, clean shutdown on EOF, and nonzero exits on errors. They do not certify the
+Java host's outstanding lifecycle guarantees.
+
+For a deliberate dependency update, run `uv lock --directory python --upgrade`,
+rerun tests, and commit the lock file with related manifest changes. Dependabot
+also checks the uv project. pytest is a development dependency only.
 
 ## Work on the ecosystem
 

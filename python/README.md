@@ -11,16 +11,21 @@ host SDK.
 
 ## Install
 
-From the repository root, create an environment and install the package:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) 0.12.23 or
+newer. From the repository root, install the package and its development tools:
 
 ```sh
-python -m venv .venv
-.venv/bin/python -m pip install -e ./python
+uv sync --project python --locked
 ```
 
-On Windows PowerShell use `.venv\Scripts\python.exe` instead of
-`.venv/bin/python`. Use this same interpreter when the host launches the worker;
-the host does not activate environments or install dependencies.
+This creates `python/.venv` and installs the versions recorded in `python/uv.lock`.
+The command is the same on Windows. `uv run --project python` runs a command in
+that environment without manual activation. To install only the worker package,
+add `--no-dev` to `uv sync`.
+
+Use the environment's interpreter when the host launches the worker; the host
+does not activate environments or install dependencies. The integration example
+uses `uv run` to make that interpreter available as `python`.
 
 ## Define a worker
 
@@ -87,14 +92,22 @@ This helper does not change those host guarantees.
 
 ## Test
 
-From the repository root after installation:
+From the repository root:
 
 ```sh
-.venv/bin/python -W error -m unittest discover -s python/tests -v
+uv run --directory python --locked pytest
+uv build --directory python
 ```
 
-Tests exercise framing, limits, handler failures, stream failures, and actual
-subprocess stdio. CI checks Python 3.11 and 3.14 on Linux, macOS, and Windows.
+The pytest suite exercises framing, limits, handler failures, stream failures,
+and actual subprocess stdio. Tests use plain assertions, fixtures, and
+parametrization. CI checks Python 3.11 and 3.14 on Linux, macOS, and Windows using
+`uv sync --locked --no-editable` so tests exercise the installed package.
+
+Update development dependencies with `uv lock --directory python --upgrade`,
+rerun tests, and commit `python/uv.lock` with related manifest changes. The lock
+file is managed by uv; do not edit it manually. pytest is a development
+dependency and does not become a runtime dependency of the worker package.
 
 The package uses the repository's Apache-2.0 license. A copy is included in
 Python distributions as `python/LICENSE`.

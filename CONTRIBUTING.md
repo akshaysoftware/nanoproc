@@ -8,8 +8,9 @@ Thanks for helping improve Nanoproc. Keep changes small and easy to review.
 2. Fork the repository and create a branch.
 3. Add regression tests for new behaviour and fixes.
 4. Follow [DEVELOPMENT.md](DEVELOPMENT.md) and run the checks for each SDK changed.
-   For Java, run `./mvnw fmt:format`, then `./mvnw verify`. For Python, install
-   `./python` in a virtual environment and run its unittest suite.
+   For Java, run `./mvnw fmt:format`, then `./mvnw verify`. For Python, run
+   `uv sync --project python --locked` and
+   `uv run --directory python --locked pytest`.
 5. Explain the problem, resulting behaviour, and validation in your PR.
 
 Linux, macOS, and Windows all matter. Lifecycle tests should use explicit readiness

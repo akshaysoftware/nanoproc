@@ -1,7 +1,11 @@
 import io
-import unittest
 
+import pytest
 from nanoproc import DEFAULT_MAX_FRAME_BYTES, ProtocolError, serve
+
+
+def unexpected_handler(_):
+    pytest.fail("handler must not be called")
 
 
 class FragmentedInput(io.BytesIO):
@@ -22,265 +26,278 @@ class ShortOutput(io.BytesIO):
         super().flush()
 
 
-class WorkerTests(unittest.TestCase):
-    def test_default_limit_matches_java(self):
-        self.assertEqual(1024 * 1024, DEFAULT_MAX_FRAME_BYTES)
+def test_default_limit_matches_java():
+    assert DEFAULT_MAX_FRAME_BYTES == 1024 * 1024
 
-    def test_independent_wire_vectors(self):
-        for payload, frame in [
-            (b"", b"\x00\x00\x00\x00"),
-            (b"\x01\x80\xff", b"\x00\x00\x00\x03\x01\x80\xff"),
-            (b"x" * 258, b"\x00\x00\x01\x02" + b"x" * 258),
-        ]:
-            with self.subTest(size=len(payload)):
-                received = []
-                output = io.BytesIO()
 
-                def handler(request):
-                    received.append(request)
-                    return request
+@pytest.mark.parametrize(
+    ("payload", "frame"),
+    [
+        (b"", b"\x00\x00\x00\x00"),
+        (b"\x01\x80\xff", b"\x00\x00\x00\x03\x01\x80\xff"),
+        (b"x" * 258, b"\x00\x00\x01\x02" + b"x" * 258),
+    ],
+    ids=["empty", "binary", "big-endian-258"],
+)
+def test_independent_wire_vectors(payload, frame):
+    received = []
+    output = io.BytesIO()
 
-                serve(handler, input_stream=io.BytesIO(frame), output_stream=output)
-                self.assertEqual([payload], received)
-                self.assertEqual(frame, output.getvalue())
+    def handler(request):
+        received.append(request)
+        return request
 
-    def test_multiple_requests_preserve_handler_state(self):
-        requests = []
+    serve(handler, input_stream=io.BytesIO(frame), output_stream=output)
+    assert received == [payload]
+    assert output.getvalue() == frame
 
-        def handler(request):
-            requests.append(request)
-            return bytes([len(requests)])
 
-        output = ShortOutput()
+def test_multiple_requests_preserve_handler_state():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return bytes([len(requests)])
+
+    output = ShortOutput()
+    serve(
+        handler,
+        input_stream=io.BytesIO(b"\0\0\0\x01a\0\0\0\0\0\0\0\x01b"),
+        output_stream=output,
+    )
+    assert requests == [b"a", b"", b"b"]
+    assert output.getvalue() == b"\0\0\0\x01\x01\0\0\0\x01\x02\0\0\0\x01\x03"
+    assert output.flushes == 3
+
+
+def test_fragmented_reads_and_short_writes():
+    frame = b"\0\0\0\x05\0\n\r\x80\xff"
+    output = ShortOutput()
+    serve(lambda data: data, input_stream=FragmentedInput(frame), output_stream=output)
+    assert output.getvalue() == frame
+    assert output.flushes == 1
+
+
+def test_clean_eof_does_not_call_handler_or_close_streams():
+    source = io.BytesIO()
+    output = ShortOutput()
+    serve(unexpected_handler, input_stream=source, output_stream=output)
+    assert output.getvalue() == b""
+    assert output.flushes == 0
+    assert not source.closed
+    assert not output.closed
+
+
+def test_response_can_be_empty():
+    output = ShortOutput()
+    serve(lambda _: b"", input_stream=io.BytesIO(b"\0\0\0\x01a"), output_stream=output)
+    assert output.getvalue() == b"\0\0\0\0"
+    assert output.flushes == 1
+
+
+def test_exact_request_and_response_limits():
+    frame = b"\0\0\0\x03abc"
+    output = io.BytesIO()
+    serve(
+        lambda data: data,
+        max_frame_bytes=3,
+        input_stream=io.BytesIO(frame),
+        output_stream=output,
+    )
+    assert output.getvalue() == frame
+
+
+@pytest.mark.parametrize("frame", [b"\0", b"\0\0", b"\0\0\0"])
+def test_truncated_headers_fail_without_calling_handler(frame):
+    output = io.BytesIO()
+    with pytest.raises(ProtocolError):
+        serve(unexpected_handler, input_stream=io.BytesIO(frame), output_stream=output)
+    assert output.getvalue() == b""
+
+
+@pytest.mark.parametrize("payload", [b"", b"a", b"ab"])
+def test_truncated_payloads_fail_without_calling_handler(payload):
+    output = io.BytesIO()
+    with pytest.raises(ProtocolError):
         serve(
-            handler,
-            input_stream=io.BytesIO(b"\0\0\0\x01a\0\0\0\0\0\0\0\x01b"),
+            unexpected_handler,
+            input_stream=io.BytesIO(b"\0\0\0\x03" + payload),
             output_stream=output,
         )
-        self.assertEqual([b"a", b"", b"b"], requests)
-        self.assertEqual(
-            b"\0\0\0\x01\x01\0\0\0\x01\x02\0\0\0\x01\x03", output.getvalue()
-        )
-        self.assertEqual(3, output.flushes)
+    assert output.getvalue() == b""
 
-    def test_fragmented_reads_and_short_writes(self):
-        frame = b"\0\0\0\x05\0\n\r\x80\xff"
-        output = ShortOutput()
+
+@pytest.mark.parametrize("header", [b"\x80\0\0\0", b"\xff\xff\xff\xff", b"\0\0\0\x04"])
+def test_invalid_lengths_are_rejected_before_reading_payload(header):
+    class HeaderOnly:
+        def __init__(self):
+            self.reads = 0
+
+        def read(self, size):
+            self.reads += 1
+            assert self.reads == 1 and size == 4, "payload must not be read"
+            return header
+
+    output = io.BytesIO()
+    with pytest.raises(ProtocolError):
         serve(
-            lambda data: data, input_stream=FragmentedInput(frame), output_stream=output
-        )
-        self.assertEqual(frame, output.getvalue())
-        self.assertEqual(1, output.flushes)
-
-    def test_clean_eof_does_not_call_handler_or_close_streams(self):
-        source = io.BytesIO()
-        output = ShortOutput()
-        serve(self.fail, input_stream=source, output_stream=output)
-        self.assertEqual(b"", output.getvalue())
-        self.assertEqual(0, output.flushes)
-        self.assertFalse(source.closed)
-        self.assertFalse(output.closed)
-
-    def test_response_can_be_empty(self):
-        output = ShortOutput()
-        serve(
-            lambda _: b"", input_stream=io.BytesIO(b"\0\0\0\x01a"), output_stream=output
-        )
-        self.assertEqual(b"\0\0\0\0", output.getvalue())
-        self.assertEqual(1, output.flushes)
-
-    def test_exact_request_and_response_limits(self):
-        frame = b"\0\0\0\x03abc"
-        output = io.BytesIO()
-        serve(
-            lambda data: data,
+            unexpected_handler,
             max_frame_bytes=3,
-            input_stream=io.BytesIO(frame),
+            input_stream=HeaderOnly(),
             output_stream=output,
         )
-        self.assertEqual(frame, output.getvalue())
+    assert output.getvalue() == b""
 
-    def test_truncated_headers_fail_without_calling_handler(self):
-        for frame in [b"\0", b"\0\0", b"\0\0\0"]:
-            with self.subTest(frame=frame):
-                output = io.BytesIO()
-                with self.assertRaises(ProtocolError):
-                    serve(
-                        self.fail, input_stream=io.BytesIO(frame), output_stream=output
-                    )
-                self.assertEqual(b"", output.getvalue())
 
-    def test_truncated_payloads_fail_without_calling_handler(self):
-        for payload in [b"", b"a", b"ab"]:
-            with self.subTest(payload=payload):
-                output = io.BytesIO()
-                with self.assertRaises(ProtocolError):
-                    serve(
-                        self.fail,
-                        input_stream=io.BytesIO(b"\0\0\0\x03" + payload),
-                        output_stream=output,
-                    )
-                self.assertEqual(b"", output.getvalue())
+@pytest.mark.parametrize(
+    ("limit", "error"),
+    [
+        (0, ValueError),
+        (-1, ValueError),
+        (1 << 31, ValueError),
+        (None, TypeError),
+        (True, TypeError),
+        (1.5, TypeError),
+        ("1024", TypeError),
+    ],
+)
+def test_invalid_limits_are_rejected_before_io(limit, error):
+    with pytest.raises(error):
+        serve(unexpected_handler, max_frame_bytes=limit)
 
-    def test_invalid_lengths_are_rejected_before_reading_payload(self):
-        class HeaderOnly:
-            def __init__(self, header):
-                self.header = header
-                self.reads = 0
 
-            def read(self, size):
-                self.reads += 1
-                if self.reads != 1 or size != 4:
-                    raise AssertionError("payload must not be read")
-                return self.header
+def test_maximum_signed_limit_is_accepted_without_allocating_it():
+    serve(
+        unexpected_handler,
+        max_frame_bytes=(1 << 31) - 1,
+        input_stream=io.BytesIO(),
+        output_stream=io.BytesIO(),
+    )
 
-        for header in [b"\x80\0\0\0", b"\xff\xff\xff\xff", b"\0\0\0\x04"]:
-            with self.subTest(header=header):
-                output = io.BytesIO()
-                with self.assertRaises(ProtocolError):
-                    serve(
-                        self.fail,
-                        max_frame_bytes=3,
-                        input_stream=HeaderOnly(header),
-                        output_stream=output,
-                    )
-                self.assertEqual(b"", output.getvalue())
 
-    def test_invalid_limits_are_rejected_before_io(self):
-        for limit in [0, -1, 1 << 31]:
-            with self.subTest(limit=limit), self.assertRaises(ValueError):
-                serve(self.fail, max_frame_bytes=limit)
-        for limit in [None, True, 1.5, "1024"]:
-            with self.subTest(limit=limit), self.assertRaises(TypeError):
-                serve(self.fail, max_frame_bytes=limit)
+def test_non_callable_handler_is_rejected_before_io():
+    with pytest.raises(TypeError):
+        serve(None)
 
-    def test_maximum_signed_limit_is_accepted_without_allocating_it(self):
+
+@pytest.mark.parametrize(
+    "response", [None, "text", bytearray(b"a"), memoryview(b"a"), 42]
+)
+def test_invalid_response_type_emits_no_frame(response):
+    output = io.BytesIO()
+    with pytest.raises(TypeError, match="handler must return bytes"):
         serve(
-            self.fail,
-            max_frame_bytes=(1 << 31) - 1,
-            input_stream=io.BytesIO(),
+            lambda _: response,
+            input_stream=io.BytesIO(b"\0\0\0\0"),
+            output_stream=output,
+        )
+    assert output.getvalue() == b""
+
+
+def test_oversized_response_emits_no_frame():
+    output = io.BytesIO()
+    with pytest.raises(ValueError, match="response exceeds"):
+        serve(
+            lambda _: b"ab",
+            max_frame_bytes=1,
+            input_stream=io.BytesIO(b"\0\0\0\0"),
+            output_stream=output,
+        )
+    assert output.getvalue() == b""
+
+
+def test_handler_failure_propagates_and_does_not_consume_next_request():
+    failure = RuntimeError("handler failed")
+
+    def handler(_):
+        raise failure
+
+    source = io.BytesIO(b"\0\0\0\0\0\0\0\0")
+    output = io.BytesIO()
+    with pytest.raises(RuntimeError) as raised:
+        serve(handler, input_stream=source, output_stream=output)
+    assert raised.value is failure
+    assert source.tell() == 4
+    assert output.getvalue() == b""
+    assert not source.closed
+    assert not output.closed
+
+
+def test_protocol_failure_does_not_resynchronize():
+    output = io.BytesIO()
+    source = io.BytesIO(b"\0\0\0\0\x80\0\0\0\0\0\0\0")
+    calls = []
+
+    def handler(data):
+        calls.append(data)
+        return data
+
+    with pytest.raises(ProtocolError):
+        serve(handler, input_stream=source, output_stream=output)
+    assert calls == [b""]
+    assert source.tell() == 8
+    assert output.getvalue() == b"\0\0\0\0"
+
+
+def test_input_transport_failure_propagates():
+    class BrokenInput:
+        def read(self, _):
+            raise OSError("broken input")
+
+    with pytest.raises(OSError, match="broken input"):
+        serve(
+            unexpected_handler, input_stream=BrokenInput(), output_stream=io.BytesIO()
+        )
+
+
+def test_nonblocking_input_is_rejected():
+    class NonblockingInput:
+        def read(self, _):
+            return None
+
+    with pytest.raises(OSError, match="blocking binary"):
+        serve(
+            unexpected_handler,
+            input_stream=NonblockingInput(),
             output_stream=io.BytesIO(),
         )
 
-    def test_non_callable_handler_is_rejected_before_io(self):
-        with self.assertRaises(TypeError):
-            serve(None)
 
-    def test_invalid_response_type_emits_no_frame(self):
-        for response in [None, "text", bytearray(b"a"), memoryview(b"a"), 42]:
-            with self.subTest(response=response):
-                output = io.BytesIO()
-                with self.assertRaisesRegex(TypeError, "handler must return bytes"):
-                    serve(
-                        lambda _: response,
-                        input_stream=io.BytesIO(b"\0\0\0\0"),
-                        output_stream=output,
-                    )
-                self.assertEqual(b"", output.getvalue())
+@pytest.mark.parametrize("result", [None, 0])
+def test_output_with_no_progress_is_rejected(result):
+    class StalledOutput:
+        def write(self, _):
+            return result
 
-    def test_oversized_response_emits_no_frame(self):
-        output = io.BytesIO()
-        with self.assertRaisesRegex(ValueError, "response exceeds"):
-            serve(
-                lambda _: b"ab",
-                max_frame_bytes=1,
-                input_stream=io.BytesIO(b"\0\0\0\0"),
-                output_stream=output,
-            )
-        self.assertEqual(b"", output.getvalue())
-
-    def test_handler_failure_propagates_and_does_not_consume_next_request(self):
-        failure = RuntimeError("handler failed")
-
-        def handler(_):
-            raise failure
-
-        source = io.BytesIO(b"\0\0\0\0\0\0\0\0")
-        output = io.BytesIO()
-        with self.assertRaises(RuntimeError) as raised:
-            serve(handler, input_stream=source, output_stream=output)
-        self.assertIs(failure, raised.exception)
-        self.assertEqual(4, source.tell())
-        self.assertEqual(b"", output.getvalue())
-        self.assertFalse(source.closed)
-        self.assertFalse(output.closed)
-
-    def test_protocol_failure_does_not_resynchronize(self):
-        output = io.BytesIO()
-        source = io.BytesIO(b"\0\0\0\0\x80\0\0\0\0\0\0\0")
-        calls = []
-
-        def handler(data):
-            calls.append(data)
-            return data
-
-        with self.assertRaises(ProtocolError):
-            serve(handler, input_stream=source, output_stream=output)
-        self.assertEqual([b""], calls)
-        self.assertEqual(8, source.tell())
-        self.assertEqual(b"\0\0\0\0", output.getvalue())
-
-    def test_input_transport_failure_propagates(self):
-        class BrokenInput:
-            def read(self, _):
-                raise OSError("broken input")
-
-        with self.assertRaisesRegex(OSError, "broken input"):
-            serve(self.fail, input_stream=BrokenInput(), output_stream=io.BytesIO())
-
-    def test_nonblocking_input_is_rejected(self):
-        class NonblockingInput:
-            def read(self, _):
-                return None
-
-        with self.assertRaisesRegex(OSError, "blocking binary"):
-            serve(
-                self.fail, input_stream=NonblockingInput(), output_stream=io.BytesIO()
-            )
-
-    def test_output_with_no_progress_is_rejected(self):
-        class StalledOutput:
-            def __init__(self, result):
-                self.result = result
-
-            def write(self, _):
-                return self.result
-
-        for result in [None, 0]:
-            with (
-                self.subTest(result=result),
-                self.assertRaisesRegex(OSError, "no progress"),
-            ):
-                serve(
-                    lambda data: data,
-                    input_stream=io.BytesIO(b"\0\0\0\0"),
-                    output_stream=StalledOutput(result),
-                )
-
-    def test_output_transport_failure_propagates(self):
-        class BrokenOutput:
-            def write(self, _):
-                raise BrokenPipeError("broken output")
-
-        with self.assertRaises(BrokenPipeError):
-            serve(
-                lambda data: data,
-                input_stream=io.BytesIO(b"\0\0\0\0"),
-                output_stream=BrokenOutput(),
-            )
-
-    def test_flush_failure_propagates(self):
-        class BrokenFlush(io.BytesIO):
-            def flush(self):
-                raise OSError("broken flush")
-
-        with self.assertRaisesRegex(OSError, "broken flush"):
-            serve(
-                lambda data: data,
-                input_stream=io.BytesIO(b"\0\0\0\0"),
-                output_stream=BrokenFlush(),
-            )
+    with pytest.raises(OSError, match="no progress"):
+        serve(
+            lambda data: data,
+            input_stream=io.BytesIO(b"\0\0\0\0"),
+            output_stream=StalledOutput(),
+        )
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_output_transport_failure_propagates():
+    class BrokenOutput:
+        def write(self, _):
+            raise BrokenPipeError("broken output")
+
+    with pytest.raises(BrokenPipeError):
+        serve(
+            lambda data: data,
+            input_stream=io.BytesIO(b"\0\0\0\0"),
+            output_stream=BrokenOutput(),
+        )
+
+
+def test_flush_failure_propagates():
+    class BrokenFlush(io.BytesIO):
+        def flush(self):
+            raise OSError("broken flush")
+
+    with pytest.raises(OSError, match="broken flush"):
+        serve(
+            lambda data: data,
+            input_stream=io.BytesIO(b"\0\0\0\0"),
+            output_stream=BrokenFlush(),
+        )
