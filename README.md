@@ -1,8 +1,9 @@
+![Banner](banner.png)
+
 # Nanoproc
+### Tiny, safe child processes and persistent workers for Java.
 
-Nanoproc: tiny, safe child processes and persistent workers for Java.
-
-**Status:** pre-release. Java 21+; zero runtime dependencies.
+> **Status:** pre-release. Java 21+; zero runtime dependencies.
 
 Nanoproc provides a small layer above `ProcessBuilder`: concurrent process I/O,
 execution deadlines, bounded captured output, and best-effort cleanup.
